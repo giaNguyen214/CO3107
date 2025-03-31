@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 app = Flask(__name__)
 
 
-AIO_USERNAME = "quangppm"
+AIO_USERNAME = "None"
+AIO_KEY = "None"
 
 GDD_ID = "yolofarm.farm-gdd"
 HUMIDITY_ID = "yolofarm.farm-humidity"

@@ -3,8 +3,8 @@ import requests
 from Adafruit_IO import MQTTClient
 
 AIO_FEED_ID = "farm-temperature"
-AIO_USERNAME = "quangppm"
-
+AIO_USERNAME = "None"
+AIO_KEY = "None"
 
 def connected(client):
     print("Ket noi thanh cong ...")
