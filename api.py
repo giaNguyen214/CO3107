@@ -8,7 +8,6 @@ app = Flask(__name__)
 
 AIO_USERNAME = "quangppm"
 
-
 GDD_ID = "yolofarm.farm-gdd"
 HUMIDITY_ID = "yolofarm.farm-humidity"
 LIGHT_INTENSITY_ID = "yolofarm.farm-light-intensity"
