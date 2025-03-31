@@ -7,7 +7,7 @@ app = Flask(__name__)
 
 
 AIO_USERNAME = "quangppm"
-# AIO_KEY = "aio_znsF24XQxLsnmXJoQKDP7fbwq4CF"
+
 
 GDD_ID = "yolofarm.farm-gdd"
 HUMIDITY_ID = "yolofarm.farm-humidity"
