@@ -140,7 +140,7 @@ class Tomato:
             
         fig, ax = plt.subplots(figsize=(10, 10))
         ax.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-        ax.set_title(f'Dự đoán cho {os.path.basename(image_path)}')
+        ax.set_title(f'Dự đoán cho ảnh vừa tải lên')
         ax.axis('off')
         st.pyplot(fig)
         
@@ -149,6 +149,7 @@ class Tomato:
 
     def show_img_capture(self, images_path, images_per_row, fixed_size=250):
         image_files = [f for f in os.listdir(images_path) if f.endswith(('.png', '.jpg', '.jpeg'))]
+        image_files = image_files[:images_per_row * 2] # limit to 2 rows
         image_cols = st.columns(images_per_row)
         for idx, img_name in enumerate(image_files):
             img_path = os.path.join(images_path, img_name)  
@@ -165,7 +166,16 @@ class Tomato:
         if uploaded_file is not None:
 
             image = Image.open(uploaded_file).convert("RGB")
-            image.save('upload.jpg')
+
+            target_folder = os.path.join("images", "tomatoes")
+            os.makedirs(target_folder, exist_ok=True)
+
+
+            existing_files = [f for f in os.listdir(target_folder) if f.endswith(('.png', '.jpg', '.jpeg'))]
+            next_number = len(existing_files) + 1
+            save_path = os.path.join(target_folder, f"{next_number}.jpg")
+            image.save(save_path)
+
             st.image(image, caption="Ảnh đã tải lên", use_container_width=True)
 
             device = torch.device('cpu')
@@ -176,8 +186,8 @@ class Tomato:
             ])
             
             base_dir = os.path.dirname(__file__)
-            pt_path = os.path.join(base_dir, "..", "tomato_detection_model.pt")
-            pth_path = os.path.join(base_dir, "..", "tomato_classifier.pth")
+            pt_path = os.path.join(base_dir, "../models", "tomato_detection_model.pt")
+            pth_path = os.path.join(base_dir, "../models", "tomato_classifier.pth")
 
             detection_model = YOLO(pt_path)
             classifier = models.resnet50(weights=None)
@@ -185,7 +195,7 @@ class Tomato:
             classifier.load_state_dict(torch.load(pth_path, map_location=device))
             classifier.to(device)
 
-            self.predict_ripeness('upload.jpg', detection_model, classifier, transform, device)
+            self.predict_ripeness(save_path, detection_model, classifier, transform, device)
     
     def data_table(self, 
         data = {
@@ -245,8 +255,8 @@ with col1:
     tomato.data_table()
     tomato.load_img()
 
-with col2:
-    blog = Blog()
-    # option params: (data = [str])
-    blog.blog()
-    blog.to_dashboard()
+with col2: pass
+#     blog = Blog()
+#     # option params: (data = [str])
+#     blog.blog()
+#     blog.to_dashboard()

@@ -1,10 +1,13 @@
 import sys
 import requests
 from Adafruit_IO import MQTTClient
+from dotenv import load_dotenv
+import os
 
 AIO_FEED_ID = "farm-temperature"
-AIO_USERNAME = "None"
-AIO_KEY = "None"
+AIO_USERNAME = os.getenv("AIO_USERNAME")
+AIO_KEY = os.getenv("AIO_KEY")
+
 
 def connected(client):
     print("Ket noi thanh cong ...")

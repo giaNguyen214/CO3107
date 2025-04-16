@@ -98,6 +98,9 @@ def fetch_data(endpoint, limit):
         response.raise_for_status()
         data = response.json()
 
+        if not isinstance(data, list):
+            st.error(f"Lỗi API {endpoint}: {data}")
+            return []
 
         processed_data = []
         for x in data:
