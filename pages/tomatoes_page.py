@@ -1,3 +1,5 @@
+from collections import defaultdict
+from datetime import datetime, timedelta
 import streamlit as st
 import os
 import cv2
@@ -11,6 +13,110 @@ from torchvision import transforms, models
 import torch.nn as nn
 
 from PIL import Image
+
+# Define something to get and set data on adafruit
+from Adafruit_IO import Client
+
+AIO_USERNAME = os.getenv("AIO_USERNAME")
+AIO_KEY = os.getenv("AIO_KEY")
+
+aio = Client(AIO_USERNAME, AIO_KEY)
+
+STATUS_ID = "yolofarm.farm-status"
+TEMPERATURE_ID = "yolofarm.farm-temperature"
+SOIL_MOISTURE_ID = "yolofarm.farm-soil-moisture"
+# ------------------------------------------------
+class Ada:
+
+    # Send data 'Chín' or 'Chưa chín' to adafruit
+    def send_to_adafruit(self, value, feed_name=STATUS_ID):
+        try:
+            aio.send(feed_name, value)
+            print(f"Gửi thành công: {value} đến {feed_name}")
+        except Exception as e:
+            print("Lỗi gửi dữ liệu:", e)
+
+    # Get data from adafruit to display in the table
+    def get_feed_data(self, feed_key, max_results=100):
+        try:
+            data = aio.data(feed_key, max_results=max_results)
+            return data
+        except Exception as e:
+            print("Lỗi lấy dữ liệu từ feed:", e)
+            return []
+
+    # Group data by day and calculate average
+    def group_avg_by_day(self, feed_data):
+        daily_values = defaultdict(list)
+        for item in feed_data:
+            # Standard to VietNam timezone
+            dt = datetime.fromisoformat(item.created_at.replace("Z", "+00:00")) + timedelta(hours=7)
+            day_str = dt.strftime("%d/%m/%Y")
+            try:
+                val = float(item.value)
+                daily_values[day_str].append(val)
+            except:
+                continue
+
+        daily_avg = {day: round(sum(vals)/len(vals), 1) for day, vals in daily_values.items()}
+        return daily_avg
+
+    # Group and format after to apply for table
+    def group_and_format_data(self, feed_status, feed_temperature, feed_soil):
+
+        daily_counts = defaultdict(lambda: {"Chín": 0, "Chưa chín": 0})
+        for item in feed_status:
+            if item.value not in ["Chín", "Chưa chín"]:
+                continue
+            # Standard to VietNam timezone, +7 (17h (ada) -> 24h (Viet Nam))
+            dt = datetime.fromisoformat(item.created_at.replace("Z", "+00:00")) + timedelta(hours=7)
+            day_str = dt.strftime("%d/%m/%Y")
+            daily_counts[day_str][item.value] += 1
+
+
+        df = pd.DataFrame([
+            {
+                "Ngày": day,
+                "Số quả phát hiện (quả)": counts["Chín"] + counts["Chưa chín"],
+                "Số quả chín": counts["Chín"],
+                "Số quả chưa chín": counts["Chưa chín"]
+            }
+            for day, counts in daily_counts.items()
+        ])
+        df["Ngày_datetime"] = pd.to_datetime(df["Ngày"], dayfirst=True)
+        df = df.sort_values(by="Ngày_datetime", ascending=False).head(5)
+        df = df.sort_values(by="Ngày_datetime")
+        df["Tỉ lệ quả chín (%)"] = (df["Số quả chín"] / df["Số quả phát hiện (quả)"] * 100).round(0).astype(int)
+
+        df["Ghi chú"] = df["Tỉ lệ quả chín (%)"].apply(self.generate_note)
+
+
+        temp_avg = self.group_avg_by_day(feed_temperature)
+        soil_avg = self.group_avg_by_day(feed_soil)
+
+        df["Độ ẩm đất (%)"] = df["Ngày"].apply(lambda d: soil_avg.get(d, 'Không có dữ liệu ngày này'))
+        df["Nhiệt độ (°C)"] = df["Ngày"].apply(lambda d: temp_avg.get(d, 'Không có dữ liệu ngày này'))
+
+
+        data = {
+            "Ngày": df["Ngày"].tolist(),
+            "Số quả phát hiện (quả)": df["Số quả phát hiện (quả)"].tolist(),
+            "Tỉ lệ quả chín (%)": df["Tỉ lệ quả chín (%)"].tolist(),
+            "Độ ẩm đất (%)": df["Độ ẩm đất (%)"].tolist(),
+            "Nhiệt độ (°C)": df["Nhiệt độ (°C)"].tolist(),
+            "Ghi chú": df["Ghi chú"].tolist()
+        }
+
+        return data
+
+    # Simulate the actions if farmer need to do :))
+    def generate_note(self, ti_le):
+        if ti_le >= 80:
+            return "Cần thu hoạch gấp"
+        elif ti_le >= 60:
+            return "Có thể thu hoạch"
+        else:
+            return "Chưa chín nhiều"
 
 class Page:
     def __init__(self, title='Phân tích sự chín của cà chua', layout="wide"):
@@ -100,7 +206,7 @@ class Tomato:
         st.markdown(f"## {title}")
 
 
-    def predict_ripeness(self, image_path, detection_model, classifier, transform, device):
+    def predict_ripeness(self, image_path, detection_model, classifier, transform, device, adafruit):
         image = cv2.imread(image_path)
         if image is None:
             print(f"Tải ảnh không được: {image_path}")
@@ -146,6 +252,9 @@ class Tomato:
         
         st.success(f"🍅 Số quả chín: {ripe_count}")
         st.warning(f"🥒 Số quả chưa chín: {unripe_count}")
+        print('Number gap: ', ripe_count-unripe_count)
+        
+        adafruit.send_to_adafruit('Chín' if ripe_count >= unripe_count else 'Chưa chín')
 
     def show_img_capture(self, images_path, images_per_row, fixed_size=250):
         image_files = [f for f in os.listdir(images_path) if f.endswith(('.png', '.jpg', '.jpeg'))]
@@ -161,7 +270,7 @@ class Tomato:
                 except:
                     st.error(f"Không thể hiển thị ảnh: {img_name}")
 
-    def load_img(self):
+    def load_img(self, adafruit):
         uploaded_file = st.file_uploader("Chọn một ảnh (jpg, png)", type=["jpg", "png"])
         if uploaded_file is not None:
 
@@ -195,18 +304,10 @@ class Tomato:
             classifier.load_state_dict(torch.load(pth_path, map_location=device))
             classifier.to(device)
 
-            self.predict_ripeness(save_path, detection_model, classifier, transform, device)
+            self.predict_ripeness(save_path, detection_model, classifier, transform, device, adafruit)
     
-    def data_table(self, 
-        data = {
-        "Ngày": ["1/4/2025", "2/4/2025", "3/4/2025", "4/4/2025", "5/4/2025"],
-        "Số quả phát hiện (quả)": [120, 130, 115, 140, 160],
-        "Tỉ lệ quả chín (%)": [85, 80, 88, 82, 90],
-        "Độ ẩm đất (%)": [60, 62, 58, 65, 70],
-        "Nhiệt độ (°C)": [25, 26, 24, 27, 28],
-        "Ghi chú": ["Tốt", "Khá", "Tốt", "Khá", "Tốt"]
-    }):
-        df = pd.DataFrame(data)
+    def data_table(self, adafruit, feed_status, feed_temperature, feed_soil):
+        df = pd.DataFrame(adafruit.group_and_format_data(feed_status, feed_temperature, feed_soil))
 
         st.data_editor(df, num_rows="dynamic")
 
@@ -249,11 +350,17 @@ col1, col2 = page.grid()
 
 with col1:
     tomato = Tomato()
+    # adafruit to get data
+    adafruit = Ada()
+    feed_status = adafruit.get_feed_data(STATUS_ID)
+    print(feed_status)
+    feed_temperature = adafruit.get_feed_data(TEMPERATURE_ID)
+    feed_soil = adafruit.get_feed_data(SOIL_MOISTURE_ID)
     # folder_path and amount images
     tomato.show_img_capture(images_path="images/tomatoes", images_per_row=6)
     # option params: (data = {str: []})
-    tomato.data_table()
-    tomato.load_img()
+    tomato.data_table(adafruit, feed_status, feed_temperature, feed_soil)
+    tomato.load_img(adafruit)
 
 with col2: pass
 #     blog = Blog()

@@ -37,7 +37,7 @@ def fetch_data(feed_id, feed_name):
         for item in data:
             if "created_at" in item:
                 dt_utc = datetime.fromisoformat(item["created_at"].replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
-                dt_local = dt_utc.astimezone()  # Chuyển về múi giờ địa phương
+                dt_local = dt_utc.astimezone()
                 item["created_at_local"] = dt_local.strftime("%Y-%m-%d %H:%M:%S")  
 
         return jsonify(data)
