@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 from datetime import datetime
 import altair as alt
+from mongodb import upload_to_mongo
 
 
 st.set_page_config(
@@ -97,6 +98,7 @@ def fetch_data(endpoint, limit):
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
+        # print(data)
 
         if not isinstance(data, list):
             st.error(f"Lỗi API {endpoint}: {data}")
@@ -126,7 +128,10 @@ soil_moisture_data = fetch_data("soil_moisture", "all")
 humidity_data = fetch_data("humidity", "all")
 light_intensity_data = fetch_data("light_intensity", "all")
 
-
+upload_to_mongo(temperature_data ,'FaYmuni', 'temp')  
+upload_to_mongo(soil_moisture_data,'FaYmuni', 'mois') 
+upload_to_mongo(humidity_data,'FaYmuni', 'humid')  
+upload_to_mongo(light_intensity_data,'FaYmuni', 'light')  
 
 col1, col2, col3 = st.columns([1, 10, 1])
 
