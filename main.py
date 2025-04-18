@@ -100,6 +100,10 @@ def fetch_data(endpoint, limit):
         data = response.json()
         # print(data)
 
+        if not isinstance(data, list):
+            st.error(f"Lỗi API {endpoint}: {data}")
+            return []
+
         processed_data = []
         for x in data:
             dt = datetime.fromisoformat(x['created_at'].replace("Z", "+00:00"))  

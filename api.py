@@ -1,13 +1,15 @@
 from flask import Flask, jsonify, request
 import requests
 from datetime import datetime, timezone
-
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
 app = Flask(__name__)
 
 
-AIO_USERNAME = "None"
-AIO_KEY = "None"
+AIO_USERNAME = os.getenv("AIO_USERNAME")
+AIO_KEY = os.getenv("AIO_KEY")
 
 GDD_ID = "yolofarm.farm-gdd"
 HUMIDITY_ID = "yolofarm.farm-humidity"

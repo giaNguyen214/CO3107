@@ -2,3 +2,4 @@
 /detect
 /temp_uploads
 /venv
+.env
