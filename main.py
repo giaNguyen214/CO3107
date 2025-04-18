@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 from datetime import datetime
 import altair as alt
-from mongodb import upload_to_mongo
+from mongodb import upload_to_mongo, fetch_new_data
 
 
 st.set_page_config(
@@ -128,10 +128,27 @@ soil_moisture_data = fetch_data("soil_moisture", "all")
 humidity_data = fetch_data("humidity", "all")
 light_intensity_data = fetch_data("light_intensity", "all")
 
-upload_to_mongo(temperature_data ,'FaYmuni', 'temp')  
-upload_to_mongo(soil_moisture_data,'FaYmuni', 'mois') 
-upload_to_mongo(humidity_data,'FaYmuni', 'humid')  
-upload_to_mongo(light_intensity_data,'FaYmuni', 'light')  
+
+ENDPOINTS = ["temperature", "soil_moisture", "humidity", "light_intensity"]
+DATA_MAP = {
+    "temperature": temperature_data,
+    "soil_moisture": soil_moisture_data,
+    "humidity": humidity_data,
+    "light_intensity": light_intensity_data
+}
+feed_collection_map = {
+    "temperature": "temp",
+    "soil_moisture": "mois",
+    "humidity": "humid",
+    "light_intensity": "light"
+}
+
+for endpoint in ENDPOINTS:
+    all_data = DATA_MAP[endpoint]
+    new_data = fetch_new_data(endpoint, all_data)
+    upload_to_mongo(new_data, "FaYmuni", feed_collection_map[endpoint])
+
+
 
 col1, col2, col3 = st.columns([1, 10, 1])
 

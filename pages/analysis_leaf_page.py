@@ -88,7 +88,7 @@ def predict_model(source_path: str):
     # Đặt tên thư mục output riêng biệt nếu muốn (tránh đè)
     output_dir = f"detect/predict_{uuid.uuid4().hex[:6]}"
 
-    predict_command = f'yolo detect predict model=model/best.pt source="{source_path}" project=detect name={output_dir} exist_ok=True'
+    predict_command = f'yolo detect predict model=models/best.pt source="{source_path}" project=detect name={output_dir} exist_ok=True'
 
     subprocess.run(predict_command, shell=True)
 
