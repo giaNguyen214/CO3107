@@ -1,30 +1,46 @@
-from collections import defaultdict
-from datetime import datetime, timedelta
-import streamlit as st
 import os
 import cv2
-
-import pandas as pd
-import matplotlib.pyplot as plt
-
-from ultralytics import YOLO
 import torch
+import pandas as pd
+from collections import defaultdict
+from datetime import datetime, timedelta
+from PIL import Image
+import streamlit as st
+import matplotlib.pyplot as plt
+from ultralytics import YOLO
 from torchvision import transforms, models
+from Adafruit_IO import Client
 import torch.nn as nn
 
-from PIL import Image
 
 # Define something to get and set data on adafruit
-from Adafruit_IO import Client
-
 AIO_USERNAME = os.getenv("AIO_USERNAME")
 AIO_KEY = os.getenv("AIO_KEY")
-
 aio = Client(AIO_USERNAME, AIO_KEY)
 
 STATUS_ID = "yolofarm.farm-status"
 TEMPERATURE_ID = "yolofarm.farm-temperature"
 SOIL_MOISTURE_ID = "yolofarm.farm-soil-moisture"
+# ------------------------------------------------
+
+# some path for prediction model
+device = torch.device('cpu')
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406],
+                         [0.229, 0.224, 0.225])
+])
+
+base_dir = os.path.dirname(__file__)
+pt_path = os.path.join(base_dir, "../models/tomato_detection_model.pt")
+pth_path = os.path.join(base_dir, "../models/tomato_classifier.pth")
+
+detection_model = YOLO(pt_path)
+classifier = models.resnet50(weights=None)
+classifier.fc = nn.Linear(classifier.fc.in_features, 2)
+classifier.load_state_dict(torch.load(pth_path, map_location=device))
+classifier.to(device)
 # ------------------------------------------------
 class Ada:
 
@@ -58,12 +74,12 @@ class Ada:
             except:
                 continue
 
-        daily_avg = {day: round(sum(vals)/len(vals), 1) for day, vals in daily_values.items()}
-        return daily_avg
+        return {day: round(sum(vals)/len(vals), 1) for day, vals in daily_values.items()}
 
     # Group and format after to apply for table
     def group_and_format_data(self, feed_status, feed_temperature, feed_soil):
-
+        
+        # Group data of tomatoes by day
         daily_counts = defaultdict(lambda: {"Chín": 0, "Chưa chín": 0})
         for item in feed_status:
             if item.value not in ["Chín", "Chưa chín"]:
@@ -73,7 +89,7 @@ class Ada:
             day_str = dt.strftime("%d/%m/%Y")
             daily_counts[day_str][item.value] += 1
 
-
+        # Construct dataframe
         df = pd.DataFrame([
             {
                 "Ngày": day,
@@ -90,15 +106,15 @@ class Ada:
 
         df["Ghi chú"] = df["Tỉ lệ quả chín (%)"].apply(self.generate_note)
 
-
+        # Get temperature and soil_moisture
         temp_avg = self.group_avg_by_day(feed_temperature)
         soil_avg = self.group_avg_by_day(feed_soil)
 
-        df["Độ ẩm đất (%)"] = df["Ngày"].apply(lambda d: soil_avg.get(d, 'Không có dữ liệu ngày này'))
-        df["Nhiệt độ (°C)"] = df["Ngày"].apply(lambda d: temp_avg.get(d, 'Không có dữ liệu ngày này'))
+        df["Độ ẩm đất (%)"] = df["Ngày"].apply(lambda d: soil_avg.get(d, 'Không có dữ liệu cho ngày này'))
+        df["Nhiệt độ (°C)"] = df["Ngày"].apply(lambda d: temp_avg.get(d, 'Không có dữ liệu cho ngày này'))
 
 
-        data = {
+        return {
             "Ngày": df["Ngày"].tolist(),
             "Số quả phát hiện (quả)": df["Số quả phát hiện (quả)"].tolist(),
             "Tỉ lệ quả chín (%)": df["Tỉ lệ quả chín (%)"].tolist(),
@@ -106,8 +122,6 @@ class Ada:
             "Nhiệt độ (°C)": df["Nhiệt độ (°C)"].tolist(),
             "Ghi chú": df["Ghi chú"].tolist()
         }
-
-        return data
 
     # Simulate the actions if farmer need to do :))
     def generate_note(self, ti_le):
@@ -198,15 +212,15 @@ class Page:
         ):
         st.markdown(custom, unsafe_allow_html=True)
     
-    def grid(self, grid = [3, 1], gap="large"):
+    def grid(self, grid = [2, 1], gap="large"):
         return st.columns(spec=grid, gap=gap)
 
 class Tomato:
-    def __init__(self, title = 'Phân tích sự chín của cà chua'):
-        st.markdown(f"## {title}")
+    def __init__(self, title = 'Phân tích sự chín của cà chua trong nông trại'):
+        self.title = title
 
 
-    def predict_ripeness(self, image_path, detection_model, classifier, transform, device, adafruit):
+    def predict_ripeness(self, image_path, adafruit, detection_model=detection_model, classifier=classifier, transform=transform, device=device):
         image = cv2.imread(image_path)
         if image is None:
             print(f"Tải ảnh không được: {image_path}")
@@ -251,12 +265,11 @@ class Tomato:
         st.pyplot(fig)
         
         st.success(f"🍅 Số quả chín: {ripe_count}")
-        st.warning(f"🥒 Số quả chưa chín: {unripe_count}")
-        print('Number gap: ', ripe_count-unripe_count)
-        
+        st.warning(f"🥒 Số quả chưa chín: {unripe_count}")        
         adafruit.send_to_adafruit('Chín' if ripe_count >= unripe_count else 'Chưa chín')
 
     def show_img_capture(self, images_path, images_per_row, fixed_size=250):
+        st.markdown(f"## Một số hình ảnh được chụp và tải lên")
         image_files = [f for f in os.listdir(images_path) if f.endswith(('.png', '.jpg', '.jpeg'))]
         image_files = image_files[:images_per_row * 2] # limit to 2 rows
         image_cols = st.columns(images_per_row)
@@ -276,42 +289,61 @@ class Tomato:
 
             image = Image.open(uploaded_file).convert("RGB")
 
-            target_folder = os.path.join("images", "tomatoes")
+            target_folder = os.path.join("images", "tomatoes", "uploaded")
             os.makedirs(target_folder, exist_ok=True)
 
-
-            existing_files = [f for f in os.listdir(target_folder) if f.endswith(('.png', '.jpg', '.jpeg'))]
-            next_number = len(existing_files) + 1
-            save_path = os.path.join(target_folder, f"{next_number}.jpg")
+            save_path = os.path.join(target_folder, datetime.now().strftime("%H%M%S_%d%m%y.jpg"))
             image.save(save_path)
-
+            
             st.image(image, caption="Ảnh đã tải lên", use_container_width=True)
 
-            device = torch.device('cpu')
-            transform = transforms.Compose([
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            ])
-            
-            base_dir = os.path.dirname(__file__)
-            pt_path = os.path.join(base_dir, "../models", "tomato_detection_model.pt")
-            pth_path = os.path.join(base_dir, "../models", "tomato_classifier.pth")
-
-            detection_model = YOLO(pt_path)
-            classifier = models.resnet50(weights=None)
-            classifier.fc = nn.Linear(classifier.fc.in_features, 2)
-            classifier.load_state_dict(torch.load(pth_path, map_location=device))
-            classifier.to(device)
-
-            self.predict_ripeness(save_path, detection_model, classifier, transform, device, adafruit)
+            self.predict_ripeness(save_path, adafruit)
     
     def data_table(self, adafruit, feed_status, feed_temperature, feed_soil):
+        st.markdown(f"## Thống kê dữ liệu thu được những ngày qua")
+
         df = pd.DataFrame(adafruit.group_and_format_data(feed_status, feed_temperature, feed_soil))
 
         st.data_editor(df, num_rows="dynamic")
 
         st.title("Phát hiện cà chua đã chín hay chưa")
+    
+    def capture_image_from_camera(self, save_dir="images/tomatoes/camera"):
+
+        os.makedirs(save_dir, exist_ok=True)
+
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            print("Không thể mở camera")
+            return None
+
+        print("Camera đã bật. Nhấn 's' để chụp và lưu ảnh, 'q' để thoát không lưu.")
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                print("Không lấy được hình ảnh từ camera")
+                break
+
+            cv2.imshow("CAMERA - PRESS 's' TO CAPTURE, OR 'q' TO EXIT", frame)
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == ord('s'):
+                filename = datetime.now().strftime("%H%M%S_%d%m%y.jpg")
+                save_path = os.path.join(save_dir, filename)
+                cv2.imwrite(save_path, frame)
+                print(f"Đã lưu ảnh tại: {save_path}")
+                cap.release()
+                cv2.destroyAllWindows()
+                return save_path
+
+            elif key == ord('q'):
+                print("Thoát không lưu ảnh.")
+                break
+
+        cap.release()
+        cv2.destroyAllWindows()
+        return None
 
 
 class Blog:
@@ -347,22 +379,26 @@ page.custom_css()
 
 # option params: (grid = [int]; gap in ["small", "medium", "large"])
 col1, col2 = page.grid()
+tomato = Tomato()
+adafruit = Ada()
 
 with col1:
-    tomato = Tomato()
-    # adafruit to get data
-    adafruit = Ada()
+    st.markdown(f"# {tomato.title}")
     feed_status = adafruit.get_feed_data(STATUS_ID)
-    print(feed_status)
     feed_temperature = adafruit.get_feed_data(TEMPERATURE_ID)
     feed_soil = adafruit.get_feed_data(SOIL_MOISTURE_ID)
-    # folder_path and amount images
-    tomato.show_img_capture(images_path="images/tomatoes", images_per_row=6)
-    # option params: (data = {str: []})
+
+    tomato.show_img_capture(images_path="images/tomatoes/uploaded", images_per_row=6)
+
     tomato.data_table(adafruit, feed_status, feed_temperature, feed_soil)
     tomato.load_img(adafruit)
+    
+    
 
-with col2: pass
+with col2:
+    st.markdown(f"## Nhận diện và phân loại cà chua qua camera")
+    if st.button('Nhấn để mở camera'):
+        tomato.predict_ripeness(tomato.capture_image_from_camera(), adafruit)
 #     blog = Blog()
 #     # option params: (data = [str])
 #     blog.blog()
