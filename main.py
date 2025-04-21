@@ -127,20 +127,24 @@ temperature_data = fetch_data("temperature", "all")
 soil_moisture_data = fetch_data("soil_moisture", "all")
 humidity_data = fetch_data("humidity", "all")
 light_intensity_data = fetch_data("light_intensity", "all")
+status_data=fetch_data("status", "all")
 
+tomatoes_data = [x for x in status_data if (x['value'] == 'Chín' or x['value'] == 'Chưa chín')]
 
-ENDPOINTS = ["temperature", "soil_moisture", "humidity", "light_intensity"]
+ENDPOINTS = ["temperature", "soil_moisture", "humidity", "light_intensity", "tomato"]
 DATA_MAP = {
     "temperature": temperature_data,
     "soil_moisture": soil_moisture_data,
     "humidity": humidity_data,
-    "light_intensity": light_intensity_data
+    "light_intensity": light_intensity_data,
+    "tomato": tomatoes_data
 }
 feed_collection_map = {
     "temperature": "temp",
     "soil_moisture": "mois",
     "humidity": "humid",
-    "light_intensity": "light"
+    "light_intensity": "light",
+    "tomato": "tomato"
 }
 
 for endpoint in ENDPOINTS:
@@ -148,10 +152,7 @@ for endpoint in ENDPOINTS:
     new_data = fetch_new_data(endpoint, all_data)
     upload_to_mongo(new_data, "FaYmuni", feed_collection_map[endpoint])
 
-
-
 col1, col2, col3 = st.columns([1, 10, 1])
-
 
 with col1:
     if st.button("Control Panel"):

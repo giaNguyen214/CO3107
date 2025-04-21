@@ -19,8 +19,8 @@ AIO_KEY = os.getenv("AIO_KEY")
 aio = Client(AIO_USERNAME, AIO_KEY)
 
 STATUS_ID = "yolofarm.farm-status"
-TEMPERATURE_ID = "yolofarm.farm-temperature"
-SOIL_MOISTURE_ID = "yolofarm.farm-soil-moisture"
+# TEMPERATURE_ID = "yolofarm.farm-temperature"
+# SOIL_MOISTURE_ID = "yolofarm.farm-soil-moisture"
 # ------------------------------------------------
 
 # some path for prediction model
@@ -77,7 +77,7 @@ class Ada:
         return {day: round(sum(vals)/len(vals), 1) for day, vals in daily_values.items()}
 
     # Group and format after to apply for table
-    def group_and_format_data(self, feed_status, feed_temperature, feed_soil):
+    def group_and_format_data(self, feed_status):
         
         # Group data of tomatoes by day
         daily_counts = defaultdict(lambda: {"Chín": 0, "Chưa chín": 0})
@@ -106,20 +106,20 @@ class Ada:
 
         df["Ghi chú"] = df["Tỉ lệ quả chín (%)"].apply(self.generate_note)
 
-        # Get temperature and soil_moisture
-        temp_avg = self.group_avg_by_day(feed_temperature)
-        soil_avg = self.group_avg_by_day(feed_soil)
+        # # Get temperature and soil_moisture
+        # temp_avg = self.group_avg_by_day(feed_temperature)
+        # soil_avg = self.group_avg_by_day(feed_soil)
 
-        df["Độ ẩm đất (%)"] = df["Ngày"].apply(lambda d: soil_avg.get(d, 'Không có dữ liệu cho ngày này'))
-        df["Nhiệt độ (°C)"] = df["Ngày"].apply(lambda d: temp_avg.get(d, 'Không có dữ liệu cho ngày này'))
+        # df["Độ ẩm đất (%)"] = df["Ngày"].apply(lambda d: soil_avg.get(d, 'Không có dữ liệu cho ngày này'))
+        # df["Nhiệt độ (°C)"] = df["Ngày"].apply(lambda d: temp_avg.get(d, 'Không có dữ liệu cho ngày này'))
 
 
         return {
             "Ngày": df["Ngày"].tolist(),
             "Số quả phát hiện (quả)": df["Số quả phát hiện (quả)"].tolist(),
             "Tỉ lệ quả chín (%)": df["Tỉ lệ quả chín (%)"].tolist(),
-            "Độ ẩm đất (%)": df["Độ ẩm đất (%)"].tolist(),
-            "Nhiệt độ (°C)": df["Nhiệt độ (°C)"].tolist(),
+            # "Độ ẩm đất (%)": df["Độ ẩm đất (%)"].tolist(),
+            # "Nhiệt độ (°C)": df["Nhiệt độ (°C)"].tolist(),
             "Ghi chú": df["Ghi chú"].tolist()
         }
 
@@ -267,6 +267,7 @@ class Tomato:
         st.success(f"🍅 Số quả chín: {ripe_count}")
         st.warning(f"🥒 Số quả chưa chín: {unripe_count}")        
         adafruit.send_to_adafruit('Chín' if ripe_count >= unripe_count else 'Chưa chín')
+        
 
     def show_img_capture(self, images_path, images_per_row, fixed_size=250):
         st.markdown(f"## Một số hình ảnh được chụp và tải lên")
@@ -299,10 +300,10 @@ class Tomato:
 
             self.predict_ripeness(save_path, adafruit)
     
-    def data_table(self, adafruit, feed_status, feed_temperature, feed_soil):
+    def data_table(self, adafruit, feed_status):
         st.markdown(f"## Thống kê dữ liệu thu được những ngày qua")
 
-        df = pd.DataFrame(adafruit.group_and_format_data(feed_status, feed_temperature, feed_soil))
+        df = pd.DataFrame(adafruit.group_and_format_data(feed_status))
 
         st.data_editor(df, num_rows="dynamic")
 
@@ -385,12 +386,12 @@ adafruit = Ada()
 with col1:
     st.markdown(f"# {tomato.title}")
     feed_status = adafruit.get_feed_data(STATUS_ID)
-    feed_temperature = adafruit.get_feed_data(TEMPERATURE_ID)
-    feed_soil = adafruit.get_feed_data(SOIL_MOISTURE_ID)
+    # feed_temperature = adafruit.get_feed_data(TEMPERATURE_ID)
+    # feed_soil = adafruit.get_feed_data(SOIL_MOISTURE_ID)
 
     tomato.show_img_capture(images_path="images/tomatoes/uploaded", images_per_row=6)
 
-    tomato.data_table(adafruit, feed_status, feed_temperature, feed_soil)
+    tomato.data_table(adafruit, feed_status)
     tomato.load_img(adafruit)
     
     

@@ -53,12 +53,7 @@ def fetch_new_data(feed_name: str, all_data: list):
             continue
         created = item["datetime"]
         if created > last_time:
-            mongo_item = {
-                "value": item["value"],
-                "created_at": created.isoformat(),
-                "_feed": feed_name
-            }
-            new_data.append(mongo_item)
+            new_data.append(item)
             if created > newest:
                 newest = created
 
