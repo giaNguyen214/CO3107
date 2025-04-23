@@ -15,6 +15,9 @@ st.set_page_config(
     layout="wide"
 )
 
+if not st.session_state.logged_in:
+    st.switch_page("pages/Login.py")
+
 custom_css = """
 <style>
 /* Ẩn menu và footer mặc định của Streamlit (nếu muốn) */

@@ -375,6 +375,9 @@ class Blog:
 
 # Start page here
 
+if not st.session_state.logged_in:
+    st.switch_page("pages/Login.py")
+
 page = Page()
 page.custom_css()
 
