@@ -13,8 +13,18 @@ SOIL_MOISTURE_ID = "yolofarm.farm-soil-moisture"
 STATUS_ID = "yolofarm.farm-status"
 TEMPERATURE_ID = "yolofarm.farm-temperature"
 
-AIO_USERNAME = "quangppm"
-AIO_KEY = "aio_iZov74y9Lj07JWFKLfHgRwJTQxw2"
+
+from dotenv import load_dotenv
+import os
+# Load environment variables
+dotenv_path = os.getenv('DOTENV_PATH', None)
+if dotenv_path:
+    load_dotenv(dotenv_path)
+else:
+    load_dotenv()
+    
+AIO_USERNAME = os.getenv("AIO_USERNAME")
+AIO_KEY = os.getenv("AIO_KEY")
 
 # Global variable to store the latest data
 latest_payload = None
