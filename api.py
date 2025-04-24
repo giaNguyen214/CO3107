@@ -5,6 +5,7 @@ from pymongo import MongoClient
 from datetime import datetime, timezone, timedelta
 from bson import ObjectId
 from dotenv import load_dotenv
+import pytz  # Sử dụng thư viện pytz để xử lý múi giờ chính xác
 
 # Load environment variables
 dotenv_path = os.getenv('DOTENV_PATH', None)
@@ -44,6 +45,9 @@ light_col      = db[os.getenv("LIGHT_COLLECTION", "light")]
 mois_col       = db[os.getenv("MOIS_COLLECTION", "mois")]
 temp_col       = db[os.getenv("TEMP_COLLECTION", "temp")]
 scheduler_col  = db[os.getenv("SCHEDULER_COLLECTION", "watering_scheduler")]
+user_col = db[os.getenv("USER_COLLECTION", "user")]
+auto_watering_col = db[os.getenv("AUTO_WATERING_COLLECTION", "auto_watering")]
+
 
 # ---------------------
 # AIO DATA FETCHER
@@ -140,6 +144,67 @@ def get_moisture(): return fetch_data(mois_col, "moisture")
 
 @app.route("/mongo/temperature", methods=["GET"])
 def get_temperature(): return fetch_data(temp_col, "temperature")
+
+@app.route("/users", methods=["GET"])
+def get_users():
+    try:
+        # Lấy toàn bộ users, chỉ select username và password
+        cursor = user_col.find({}, {"_id": 0, "username": 1, "password": 1})
+        users = list(cursor)
+        return jsonify(users)
+    except Exception as e:
+        return jsonify({"error": "Error fetching users", "details": str(e)}), 500
+
+@app.route("/auto-watering", methods=["GET"])
+def get_auto_watering():
+    try:
+        cursor = auto_watering_col.find().sort("datetime", -1)
+        return jsonify([format_doc(doc) for doc in cursor])
+    except Exception as e:
+        return jsonify({"error": "Error fetching auto-watering data", "details": str(e)}), 500
+
+@app.route("/auto-watering", methods=["POST"])
+def create_auto_watering():
+    data = request.json or {}
+
+    # Kiểm tra các trường bắt buộc
+    for field in ("day", "month", "year", "hour", "minute"):
+        if field not in data:
+            return jsonify({"error": f"Missing field: {field}"}), 400
+
+    # Dựng datetime từ giờ địa phương (GMT+7)
+    try:
+        # Giả sử giờ gửi từ client là theo múi giờ địa phương GMT+7
+        local_timezone = pytz.timezone("Asia/Ho_Chi_Minh")  # Múi giờ Việt Nam
+        dt_local = datetime(
+            year=int(data["year"]), month=int(data["month"]),
+            day=int(data["day"]), hour=int(data["hour"]),
+            minute=int(data["minute"])
+        )
+
+        # Đặt múi giờ cho datetime là GMT+7
+        dt_local = local_timezone.localize(dt_local)
+
+        # Lấy giờ theo GMT+7
+        dt_hour_gmt7 = dt_local.strftime("%H")  # Giờ đúng theo múi giờ GMT+7
+
+        # Chuyển datetime sang UTC nếu cần (để lưu vào cơ sở dữ liệu)
+        dt_utc = dt_local.astimezone(pytz.utc)
+    except ValueError as e:
+        return jsonify({"error": "Invalid date/time", "details": str(e)}), 400
+
+    # Kiểm tra trùng
+    if auto_watering_col.find_one({"datetime": dt_utc.isoformat()}):
+        return jsonify({"error": "Auto-watering schedule already exists at this datetime"}), 400
+
+    new_doc = {
+        "day": dt_local.day, "month": dt_local.month,
+        "year": dt_local.year, "hour": dt_hour_gmt7,  # Lưu giờ theo GMT+7
+        "minute": dt_local.minute, "datetime": dt_utc.isoformat()
+    }
+
+    result = auto_watering_col.insert_one(new_doc)
+    return jsonify({"message": "Auto-watering schedule created", "id": str(result.inserted_id)})
 
 # ---------------------
 # SCHEDULE CRUD

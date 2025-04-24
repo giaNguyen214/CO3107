@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-from datetime import datetime, date, time as dt_time
+from datetime import datetime, date, time as dt_time, timezone, timedelta
 import os
 from mqtt_server import get_latest_moisture
 from pymongo import MongoClient
@@ -23,7 +23,8 @@ for key, default in [
     ('edit_time', dt_time(datetime.now().hour, datetime.now().minute)),
     ('thread_started', False),
     ('logged_in', False),
-    ('adding_schedule', False)
+    ('adding_schedule', False),
+    ("auto_watering_sent", False)
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -83,12 +84,28 @@ with col1:
         st.info("Waiting for sensor data...")
 
     st.markdown("#### Watering History")
-    for wh in ["1/20 10:00 to 11:00","1/21 08:00 to 09:00","1/23 16:00 to 17:00",
-               "1/24 09:30 to 10:00","1/25 10:00 to 10:30"]:
-        st.markdown(f"- {wh}")
+    try:
+        response = requests.get(f"{BASE_URL}/auto-watering")
+        if response.ok:
+            data = response.json()
+            for item in data:
+                # Lấy thông tin từ các trường day, month, year, hour, minute
+                day = item.get("day", "Unknown day")
+                month = item.get("month", "Unknown month")
+                year = item.get("year", "Unknown year")
+                hour = item.get("hour", "Unknown hour")
+                minute = item.get("minute", "Unknown minute")
+
+                # Hiển thị đầy đủ các thông tin lịch sử tưới cây
+                st.write(f"- Auto-watering at: {day}/{month}/{year} {hour}:{minute}")
+        else:
+            st.error(f"Failed to fetch history: {response.json().get('error', 'Unknown error')}")
+    except Exception as e:
+        st.error(f"Error fetching auto-watering history: {e}")
 
     if st.button("Dashboard"):
         st.switch_page("./main.py")
+
 
 # Column 2: Schedule
 with col2:
@@ -192,12 +209,25 @@ with col3:
     if (st.session_state.moisture is not None
         and float(st.session_state.moisture) < threshold):
         st.warning("Soil below threshold, auto-watering...")
-        collection.insert_one({
-            "moisture":st.session_state.moisture,
-            "action":"Auto watering",
-            "timestamp":datetime.now()
-        })
-        st.success("Watering logged.")
+        # lấy giờ local GMT+7 luôn
+        now = datetime.now(timezone(timedelta(hours=7)))
+        payload = {
+            "day":    now.day,
+            "month":  now.month,
+            "year":   now.year,
+            "hour":   now.hour,
+            "minute": now.minute
+        }
+
+        try:
+            response = requests.post(f"{BASE_URL}/auto-watering", json=payload)
+            if response.ok:
+                st.success("Auto-watering logged.")
+                st.rerun()
+            else:
+                print(response.json().get("error", "Unknown error occurred."))
+        except Exception as e:
+            print(f"Failed to send auto-watering request: {e}")
 
 # --- Single rerun trigger ---
 while True:
